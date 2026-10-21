@@ -51,3 +51,16 @@ These shape the on-disk and in-database formats, so changing them later needs a 
   post-merge tests, automated bisect and revert.
 - Code search beyond path search.
 - Export back to git, or a read-only git facade.
+- **Verifiable ref log (transparency log), after the MVP.** A Merkle log of every ref move
+  (`repo, ref, version, old, new, changeset, principal, time`) in the C2SP `tlog-checkpoint`,
+  `tlog-cosignature` and `tlog-tiles` formats, as in Certificate Transparency and the Go checksum
+  database. roubd verifies an inclusion proof for every `ResolveRef` answer and consistency with
+  the last checkpoint it saw, so a compromised server cannot rewind `main` or show different
+  clients different histories; optional external witnesses cosign checkpoints. A batching
+  sequencer assigns log positions, so the ref compare-and-swap never waits on the log. The log
+  holds hashes and metadata only, never file contents or commit messages, so redaction does not
+  break it. Not a blockchain: roub has one authoritative operator, and consensus on every ref
+  move would undo lock-free commits.
+  **Constraint for the MVP:** `ref_log` rows are immutable and a ref's version never decreases or
+  restarts, including after the ref is deleted, so the log can be built from `ref_log` later
+  without a migration.
