@@ -21,26 +21,29 @@ still has to decide.
 | Refs | Only `main` and release branches are expected to be refs | Global mutable state is the scaling problem the design avoids. |
 | Diagrams | D2 for architecture (rendered SVG checked in CI), Mermaid for sequence diagrams | Text sources diff well and are compact context for agents (the draw.io XML of the same diagram was about five times larger and mostly coordinates). D2 renders deterministically from a single binary; Mermaid renders natively on GitHub. |
 | Supply chain | Actions pinned to commit SHAs, 14-day cooldown on new versions, least-privilege workflow tokens, Codecov via OIDC, CodeQL, zizmor, OpenSSF Scorecard, cargo-deny, private vulnerability reporting | roub hosts other people's source code; a compromised build or CI step would compromise every repository it serves. |
+| Canonical encoding | Own binary format, specified in [object-format.md](object-format.md): a format-version byte, minimal LEB128 integers, sorted lists, critical (odd) and ignorable (even) extension tags; strict decoders; golden vectors, property tests and fuzzing | Ids hash the exact stored bytes, so the encoding must be unique and checkable by any implementation. Every reviewed implementation that got this right (Mononoke, CarterT27/scion, OpenCSGs/scion, bnsd55/openscion) used one strict encoding with pinned vectors. |
+| Trees | Derived from the first parent's tree and the changes, synchronously at commit, stored as content-addressed objects; not part of the changeset id. Entries carry mode, id and size | As in Mononoke's Bonsai model: the derivation can evolve without changing changeset ids, and clients still fetch trees by id. Sizes let ProjFS and FUSE list directories without fetching blobs. |
+| Changeset contents | Ordered parents (at most 16), author, optional committer, message, `Put`/`Delete` per path relative to the first parent, optional `copy_from` (parent, path) for copies and renames, extensions | `Put`/`Delete` is what every implementation converged on; `copy_from` keeps rename history exact instead of guessing it later. A merge's tree is the first parent's tree plus its changes. |
+| Blob ids | BLAKE3 of the whole file content; chunking, when it comes, is a storage format below the id | Large-file chunking can be added without changing any id. |
+| Symlinks and executable bit | Always stored in trees as their own modes | The stored tree is the same on every platform; only checkout differs. |
 
 ## Open: decide before the MVP
 
 These shape the on-disk and in-database formats, so changing them later needs a migration.
 
-- **Canonical encodings** of trees and changesets (field order, integer encoding, how a
-  changeset names its parents and per-file operations: delete, rename, mode change, copy info).
-- **Trees as derived data or as part of the changeset.** Scion's changesets list only changed
-  files; trees are probably derived (as in Mononoke's Bonsai model).
 - **Large files:** chunking, deduplication and the compression codec (zstd level, dictionaries).
+  The blob id is already fixed as the hash of the whole content.
 - **Database schema** for the WAL, refs, derived data, ACLs and the git id map.
 - **Derived data framework:** how a type is versioned, backfilled and invalidated when its
   definition changes.
 - **Authorization through caches.** Per-directory ACLs are checked at roub-server. A cache that
   answers any object by hash could leak restricted content to a caller who knows the hash.
   Options: signed fetch grants issued by the server, or token checks at every tier.
-- **Exact case folding.** `find_case_collisions` uses Unicode lowercase mapping, which
-  approximates the NTFS upcase table. Decide whether to embed the NTFS table.
-- **Symlinks and the executable bit on Windows:** store both in trees; decide how a Windows
-  checkout represents them (symlinks need Developer Mode or a privilege).
+- **Exact case folding.** `path::fold_case` uses Unicode lowercase mapping, which approximates
+  the NTFS upcase table. Decide between Unicode simple case folding and the NTFS table.
+- **Symlinks and the executable bit on a Windows checkout** (both are stored in trees): symlinks
+  need Developer Mode or a privilege; without it, a checkout could write a file holding the
+  target and warn.
 - **Garbage collection** of unreferenced blobs and abandoned changesets.
 
 ## Open: later

@@ -17,6 +17,13 @@ updates:
       tracing:
         patterns: ["tracing*"]
 
+  - package-ecosystem: "cargo"
+    directory: "/fuzz"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 14
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

@@ -1,0 +1,32 @@
+# Fuzz targets for the canonical decoders. Run with cargo-fuzz on a nightly toolchain:
+#   cargo +nightly-2026-10-01 fuzz run decode_changeset
+# Not a workspace member: libFuzzer needs nightly, and the main workspace builds on stable.
+[package]
+name = "roub-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+roub-core = { path = "../crates/roub-core" }
+
+[workspace]
+
+[[bin]]
+name = "decode_tree"
+path = "fuzz_targets/decode_tree.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_changeset"
+path = "fuzz_targets/decode_changeset.rs"
+test = false
+doc = false
+bench = false

@@ -3,6 +3,7 @@
 //! The server validates every path when a changeset is created, so a repository never
 //! contains a path that one of the supported platforms cannot represent.
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -53,7 +54,10 @@ pub enum PathError {
 }
 
 /// A validated repository path: `/`-separated, relative, NFC, valid on Linux and Windows.
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+///
+/// Paths order component by component, comparing each component's bytes, which is the order of a
+/// depth-first walk of the tree: `a/b` sorts before `a.b`, although `/` is a larger byte than `.`.
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct RepoPath(String);
 
 impl RepoPath {
@@ -72,6 +76,25 @@ impl RepoPath {
     /// The path's components, from the root down.
     pub fn components(&self) -> impl Iterator<Item = &str> {
         self.0.split('/')
+    }
+
+    /// Whether `self` is a strict ancestor directory of `other`: `a/b` of `a/b/c`, not of `a/bc`.
+    pub fn is_ancestor_of(&self, other: &RepoPath) -> bool {
+        other.0.len() > self.0.len()
+            && other.0.starts_with(&self.0)
+            && other.0.as_bytes()[self.0.len()] == b'/'
+    }
+}
+
+impl Ord for RepoPath {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.components().cmp(other.components())
+    }
+}
+
+impl PartialOrd for RepoPath {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -103,7 +126,8 @@ fn validate(path: &str) -> Result<(), PathError> {
     path.split('/').try_for_each(validate_component)
 }
 
-fn validate_component(component: &str) -> Result<(), PathError> {
+/// Validates one path component: a file or directory name as stored in a tree entry.
+pub(crate) fn validate_component(component: &str) -> Result<(), PathError> {
     if component.is_empty() {
         return Err(PathError::EmptyComponent);
     }
@@ -131,9 +155,10 @@ fn validate_component(component: &str) -> Result<(), PathError> {
     Ok(())
 }
 
-/// Control characters and the characters Windows forbids in file names.
+/// Control characters, the separator and the characters Windows forbids in file names. A path
+/// never reaches this with a `/`, since it is split first; a tree entry name can.
 fn is_forbidden(c: char) -> bool {
-    c.is_control() || matches!(c, '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*')
+    c.is_control() || matches!(c, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*')
 }
 
 /// `NUL`, `nul.txt` and `Com1.tar.gz` are all reserved: Windows compares the part before the
@@ -143,6 +168,14 @@ fn is_windows_reserved(component: &str) -> bool {
     WINDOWS_RESERVED
         .iter()
         .any(|reserved| stem.to_uppercase() == *reserved)
+}
+
+/// The key under which two names collide on a case-insensitive file system.
+///
+/// Unicode lowercase mapping approximates the NTFS upcase table; the exact table is an open design
+/// decision (see `docs/design/decisions.md`). Every case check goes through this function.
+pub(crate) fn fold_case(name: &str) -> String {
+    name.to_lowercase()
 }
 
 /// Finds paths that would land in the same file or directory on a case-insensitive file
@@ -163,7 +196,7 @@ pub fn find_case_collisions<'a>(
                 prefix.push('/');
             }
             prefix.push_str(component);
-            let folded = prefix.to_lowercase();
+            let folded = fold_case(&prefix);
             match seen.get(&folded) {
                 Some(existing) if *existing != prefix => {
                     let pair = (existing.clone(), prefix.clone());
@@ -302,6 +335,28 @@ mod tests {
                 ("src".to_owned(), "Src".to_owned()),
             ]
         );
+    }
+
+    #[test]
+    fn orders_like_a_tree_walk() {
+        let mut paths = [
+            path("a.b"),
+            path("a/b"),
+            path("a"),
+            path("a-b/c"),
+            path("b"),
+        ];
+        paths.sort();
+        let sorted: Vec<&str> = paths.iter().map(RepoPath::as_str).collect();
+        assert_eq!(sorted, ["a", "a/b", "a-b/c", "a.b", "b"]);
+    }
+
+    #[test]
+    fn ancestor_is_component_wise() {
+        assert!(path("a/b").is_ancestor_of(&path("a/b/c")));
+        assert!(!path("a/b").is_ancestor_of(&path("a/bc")));
+        assert!(!path("a/b").is_ancestor_of(&path("a/b")));
+        assert!(!path("a/b/c").is_ancestor_of(&path("a/b")));
     }
 
     #[test]
