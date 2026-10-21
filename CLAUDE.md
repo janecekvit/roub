@@ -109,6 +109,8 @@ the same bar as the product. See `SECURITY.md` for reporting.
 - **New dependencies** must pass `cargo deny check`: allowed licences, no RustSec advisories,
   crates.io only.
 - Run `zizmor .github/workflows` (and `actionlint`) after editing a workflow.
+- GitHub Copilot code review follows `.github/copilot-instructions.md` (it reads only the
+  first 4,000 characters). When a rule here changes, update that file too.
 
 ## License
 
