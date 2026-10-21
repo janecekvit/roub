@@ -20,6 +20,7 @@ still has to decide.
 | Line endings | Stored as committed, never converted | Conversion, if any, belongs to checkout. |
 | Refs | Only `main` and release branches are expected to be refs | Global mutable state is the scaling problem the design avoids. |
 | Diagrams | D2 for architecture (rendered SVG checked in CI), Mermaid for sequence diagrams | Text sources diff well and are compact context for agents (the draw.io XML of the same diagram was about five times larger and mostly coordinates). D2 renders deterministically from a single binary; Mermaid renders natively on GitHub. |
+| Supply chain | Actions pinned to commit SHAs, 14-day cooldown on new versions, least-privilege workflow tokens, Codecov via OIDC, CodeQL, zizmor, OpenSSF Scorecard, cargo-deny, private vulnerability reporting | roub hosts other people's source code; a compromised build or CI step would compromise every repository it serves. |
 
 ## Open: decide before the MVP
 
