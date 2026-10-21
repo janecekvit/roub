@@ -1,0 +1,30 @@
+# Local development stack: the storage roub-server will use, plus the server itself.
+# roub-server does not connect to PostgreSQL or Azurite yet; the storage milestone wires them in.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: roub
+      POSTGRES_PASSWORD: roub
+      POSTGRES_DB: roub
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    command: azurite-blob --blobHost 0.0.0.0
+    ports:
+      - "10000:10000"
+
+  roub-server:
+    build: .
+    ports:
+      - "7470:7470"
+    depends_on:
+      - postgres
+      - azurite
+
+volumes:
+  pgdata: {}

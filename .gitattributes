@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.d2 text eol=lf
+docs/**/*.svg linguist-generated=true
+*.png binary

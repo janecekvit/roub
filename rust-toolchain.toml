@@ -1,0 +1,5 @@
+# Keep in sync with the toolchain installed in .github/workflows/ci.yml and the Dockerfile.
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

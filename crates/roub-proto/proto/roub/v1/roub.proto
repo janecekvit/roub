@@ -1,0 +1,128 @@
+// roub wire contract, version 1.
+//
+// Every tier speaks these RPCs. ObjectService is answered identically by roubd, roub-cache
+// and roub-server, so a client never needs to know the cache topology. RepositoryService is
+// answered only by roub-server; caches pass its calls through and never cache the answers.
+
+syntax = "proto3";
+
+package roub.v1;
+
+// Content address of an immutable object: BLAKE3-256 of its canonical, uncompressed encoding.
+message ObjectId {
+  bytes digest = 1;
+}
+
+enum ObjectKind {
+  OBJECT_KIND_UNSPECIFIED = 0;
+  OBJECT_KIND_BLOB = 1;
+  OBJECT_KIND_TREE = 2;
+  OBJECT_KIND_CHANGESET = 3;
+}
+
+enum Compression {
+  COMPRESSION_UNSPECIFIED = 0;
+  COMPRESSION_NONE = 1;
+  COMPRESSION_ZSTD = 2;
+}
+
+// An object in the on-disk format the daemon stores, so caches can stream it without
+// recompressing.
+message Object {
+  ObjectId id = 1;
+  ObjectKind kind = 2;
+  Compression compression = 3;
+  bytes content = 4;
+}
+
+service ObjectService {
+  // Streams the requested objects. The caller names only what it wants, never what it
+  // already has; missing objects end the stream with NOT_FOUND.
+  rpc GetObjects(GetObjectsRequest) returns (stream Object);
+}
+
+message GetObjectsRequest {
+  string repository = 1;
+  repeated ObjectId ids = 2;
+}
+
+service RepositoryService {
+  // Resolves a ref to the changeset it points at. Always answered from the metadata store.
+  rpc ResolveRef(ResolveRefRequest) returns (ResolveRefResponse);
+
+  // Stores blobs the server does not have yet (put-if-absent). Blobs already present are
+  // acknowledged without being written again.
+  rpc PutBlobs(stream PutBlobsRequest) returns (PutBlobsResponse);
+
+  // Appends a changeset to the write-ahead log. Takes no lock and moves no ref.
+  rpc CreateChangeset(CreateChangesetRequest) returns (CreateChangesetResponse);
+
+  // Moves a ref if it still points at `expected`: a compare-and-swap on one row.
+  rpc CompareAndSwapRef(CompareAndSwapRefRequest) returns (CompareAndSwapRefResponse);
+}
+
+message ResolveRefRequest {
+  string repository = 1;
+  string ref_name = 2;
+}
+
+message ResolveRefResponse {
+  ObjectId changeset = 1;
+}
+
+message PutBlobsRequest {
+  string repository = 1;
+  Object blob = 2;
+}
+
+message PutBlobsResponse {
+  uint32 stored = 1;
+  uint32 already_present = 2;
+}
+
+enum FileMode {
+  FILE_MODE_UNSPECIFIED = 0;
+  FILE_MODE_REGULAR = 1;
+  FILE_MODE_EXECUTABLE = 2;
+  FILE_MODE_SYMLINK = 3;
+}
+
+message FileContent {
+  ObjectId blob = 1;
+  FileMode mode = 2;
+}
+
+message Deleted {}
+
+// One changed path relative to the first parent.
+message FileChange {
+  string path = 1;
+  oneof change {
+    FileContent upsert = 2;
+    Deleted delete = 3;
+  }
+}
+
+message CreateChangesetRequest {
+  string repository = 1;
+  ObjectId parent = 2;
+  repeated FileChange changes = 3;
+  string message = 4;
+}
+
+message CreateChangesetResponse {
+  ObjectId changeset = 1;
+}
+
+message CompareAndSwapRefRequest {
+  string repository = 1;
+  string ref_name = 2;
+  ObjectId expected = 3;
+  ObjectId desired = 4;
+}
+
+message CompareAndSwapRefResponse {
+  bool swapped = 1;
+  // Where the ref points now: `desired` on success, the winner's changeset otherwise.
+  ObjectId current = 2;
+}

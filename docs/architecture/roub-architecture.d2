@@ -1,0 +1,126 @@
+# roub architecture: how a checkout and a commit flow through the tiers.
+# Source of truth for the architecture diagram. Render with scripts/render-diagrams.sh.
+# Containers are failure domains and deployment boundaries; edge numbers give the order.
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 40
+  }
+}
+
+direction: down
+
+classes: {
+  box: {
+    style: {
+      fill: "#FFFFFF"
+      stroke-width: 2
+      border-radius: 6
+      font-size: 14
+      font-color: "#1B222C"
+    }
+  }
+  later: {
+    style: {
+      fill: "#FFFFFF"
+      stroke-dash: 4
+      border-radius: 6
+      font-size: 14
+      font-color: "#5D6874"
+    }
+  }
+  checkout: {
+    style: {
+      stroke: "#3D6DB5"
+      stroke-width: 2
+      font-size: 13
+    }
+  }
+  commit: {
+    style: {
+      stroke: "#C27A26"
+      stroke-width: 2
+      font-size: 13
+    }
+  }
+  support: {
+    style: {
+      stroke: "#8C8C8C"
+      stroke-dash: 5
+      font-size: 13
+      font-color: "#5D6874"
+    }
+  }
+}
+
+title: |md
+  # roub: how a checkout and a commit flow through the tiers
+  Dashed regions are failure domains and deployment boundaries · numbers give the order of operations
+| {near: top-center}
+
+node: "NODE · developer PC, CI agent or sandbox · Linux or Windows" {
+  style: {fill: "#F4EEE6"; stroke: "#8C6D46"; stroke-dash: 4; font-color: "#6B4F2A"; border-radius: 12}
+
+  agent: "AI agent · CI job\nruns roub, or calls the API with no checkout" {class: box; style.stroke: "#8C6D46"}
+  cli: "roub (CLI)\ncheckout · status · commit · update\nshort-lived, talks only to roubd" {class: box; style.stroke: "#8C6D46"}
+  roubd: "roubd (node daemon)\none object store for every job on the node\nbounded cache · starts from a snapshot\nfile watcher · dirty-path set\nsystemd unit · Windows service" {class: box; style.stroke: "#8C6D46"}
+  wc: "Working copy\nsparse: only the directories in the profile\nvirtual: FUSE (Linux) · ProjFS (Windows)" {class: box; style.stroke: "#8C6D46"}
+}
+
+cache_tier: "REGIONAL CACHE TIER · on-prem site or Azure region · no long-lived state" {
+  style: {fill: "#F8ECDC"; stroke: "#C98A3A"; stroke-dash: 4; font-color: "#8A5A1C"; border-radius: 12}
+
+  cache: "roub-cache ×N\ntrees and blobs from RAM\nsame RPCs as roub-server\nasks upstream only on a miss\nrefs pass through, never cached" {class: box; style.stroke: "#C98A3A"}
+}
+
+auth: "AUTHORITATIVE TIER · Debian containers or .deb · Windows service · Azure Container Apps or AKS" {
+  style: {fill: "#EAF1FA"; stroke: "#6C8EBF"; stroke-dash: 4; font-color: "#1F4E79"; border-radius: 12}
+
+  server: "roub-server ×N\nstateless API fleet\nfetch · create changesets · merge · rebase · diff\nblame and history from derived data\ntoken and per-directory ACL checks" {class: box; style.stroke: "#6C8EBF"}
+  derived: "Derived-data workers\nblame · path history · skip lists\ncomputed from the parents' values" {class: box; style.stroke: "#6C8EBF"}
+  ingest: "git ingest\none-way import, in commit order\ngit SHA to changeset id map" {class: box; style.stroke: "#6C8EBF"}
+  review: "Review and landing (later)\nchange requests · batch landing\nbisect and revert" {class: later; style.stroke: "#6C8EBF"}
+}
+
+storage: "STORAGE · the only long-lived state" {
+  style: {fill: "#DCE7F5"; stroke: "#5B84C4"; stroke-dash: 4; font-color: "#1F4E79"; border-radius: 12}
+
+  meta: "PostgreSQL\nchangeset WAL · refs (CAS)\nderived data · ACLs · git id map" {shape: cylinder; class: box; style.stroke: "#5B84C4"}
+  blob: "Blob store · object_store\ntrees and file contents by hash\nFS · S3 · Azure Blob" {shape: cylinder; class: box; style.stroke: "#5B84C4"}
+}
+
+identity: "IDENTITY · outside roub" {
+  style: {fill: "#F1ECF8"; stroke: "#8067B7"; stroke-dash: 4; font-color: "#5B4691"; border-radius: 12}
+  idp: "Identity provider\nEntra ID or any OIDC provider\nJWTs · API keys for automation" {class: box; style.stroke: "#8067B7"}
+}
+
+githost: "GIT HOSTING · migration source" {
+  style: {fill: "#F4EEE6"; stroke: "#8C6D46"; stroke-dash: 4; font-color: "#6B4F2A"; border-radius: 12}
+  git: "Existing git repository\nGitHub · Azure DevOps · GitLab" {class: box; style.stroke: "#8C6D46"}
+}
+
+# Checkout (1-6)
+node.cli -> node.roubd: "1 · roub checkout main" {class: checkout}
+node.roubd -> cache_tier.cache: "2 · resolve main, missing trees and blobs" {class: checkout}
+cache_tier.cache -> auth.server: "3 · only on a miss" {class: checkout}
+auth.server -> storage.meta: "4 · read ref" {class: checkout}
+auth.server -> storage.blob: "5 · read trees and blobs" {class: checkout}
+node.roubd -> node.wc: "6 · write files or serve reads" {class: checkout}
+
+# Commit (7-11)
+node.wc -> node.roubd: "7 · file changes" {class: commit}
+node.cli -> node.roubd: "8 · roub commit" {class: commit}
+node.roubd -> cache_tier.cache: "9 · new blobs, then the changeset" {class: commit}
+cache_tier.cache -> auth.server: "9 · writes pass through" {class: commit}
+auth.server -> storage.blob: "10 · put-if-absent" {class: commit}
+auth.server -> storage.meta: "11 · WAL + CAS" {class: commit}
+
+# Supporting paths
+node.agent -> node.cli: "runs" {style: {stroke: "#4D4D4D"; stroke-width: 2}}
+node.agent -> auth.server: "API without a checkout" {class: support}
+auth.derived <-> storage.meta: "derived data" {class: support}
+auth.server -> identity.idp: "token check" {class: support}
+auth.ingest -> auth.server: "creates changesets" {class: support}
+githost.git -> auth.ingest: "fetch" {class: support}
