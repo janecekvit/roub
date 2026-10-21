@@ -100,9 +100,11 @@ jobs:
           tool: cargo-fuzz@0.13.2
       - name: Fuzz decoders
         working-directory: fuzz
+        # The prebuilt cargo-fuzz is a musl binary and would default to the musl target, which
+        # the address sanitizer cannot use, so name the target explicitly.
         run: |
           for target in decode_tree decode_changeset; do
-            cargo "+$FUZZ_TOOLCHAIN" fuzz run "$target" -- -max_total_time=60
+            cargo "+$FUZZ_TOOLCHAIN" fuzz run --target x86_64-unknown-linux-gnu "$target" -- -max_total_time=60
           done
 
   diagrams:
