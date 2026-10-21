@@ -79,6 +79,8 @@ updating `docs/design/decisions.md`.
 - Platform differences (virtual file system, watcher, local IPC, service host) go behind traits
   with one implementation per OS, selected with `cfg`.
 - Tests for pure logic live next to the code in `#[cfg(test)]` modules.
+- The repository is public: never put links to Claude sessions (`claude.ai/code/session_…`) or
+  other private URLs in commits, pull request descriptions, comments or files.
 
 ## Diagrams
 
