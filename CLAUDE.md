@@ -28,9 +28,11 @@ docker build -t roub-server .           # Debian image
 docker compose up                       # PostgreSQL + Azurite + roub-server
 ```
 
-CI (`.github/workflows/ci.yml`) runs fmt, clippy and tests on Ubuntu and Windows, cargo-deny,
-a Docker build and the diagram check. The toolchain is pinned in `rust-toolchain.toml`; keep the CI workflow and
-the Dockerfile on the same version.
+CI (`.github/workflows/ci.yml`) runs fmt, clippy and tests on Ubuntu and Windows, coverage
+(cargo-llvm-cov, uploaded to Codecov), cargo-deny, a Docker build and the diagram check.
+`security.yml` runs CodeQL (Rust and the workflows) and zizmor; `scorecard.yml` runs OpenSSF
+Scorecard. The toolchain is pinned in `rust-toolchain.toml`; keep the CI workflow and the
+Dockerfile on the same version.
 
 ## Layout
 
@@ -77,6 +79,11 @@ updating `docs/design/decisions.md`.
 - Platform differences (virtual file system, watcher, local IPC, service host) go behind traits
   with one implementation per OS, selected with `cfg`.
 - Tests for pure logic live next to the code in `#[cfg(test)]` modules.
+- The repository is public: never put links to Claude sessions (`claude.ai/code/session_…`) or
+  other private URLs in commits, pull request descriptions, comments or files.
+- Pull requests are squash-merged with the title and description as the commit message, so write
+  the description as that message: what changes and why, plus how it was tested. Instructions
+  for the reviewer or for repository settings go in a PR comment, not the description.
 
 ## Diagrams
 
@@ -89,6 +96,26 @@ updating `docs/design/decisions.md`.
   `docs/architecture/README.md`, where GitHub renders them. Update them when an RPC or its order
   changes.
 - No draw.io, no ASCII art for architecture.
+
+## CI and supply chain
+
+roub is open source and serves code across trust boundaries, so its own supply chain is held to
+the same bar as the product. See `SECURITY.md` for reporting.
+
+- **Pin every action to a full commit SHA** with the release in a comment
+  (`uses: owner/action@<sha> # v1.2.3`). Dependabot keeps both up to date.
+- **New versions wait 14 days.** Dependabot's `cooldown` does this for updates; apply the same
+  rule by hand to any action, crate or tool version you add.
+- **Least privilege:** workflows default to `contents: read`; a job that needs more (`id-token`,
+  `security-events`) asks for it at job level. Check out with `persist-credentials: false`.
+- **No stored secrets:** Codecov uploads through GitHub OIDC.
+- **Coverage is informational** (`codecov.yml`): it is reported on every pull request but does
+  not block it. New logic in `roub-core` still comes with tests.
+- **New dependencies** must pass `cargo deny check`: allowed licences, no RustSec advisories,
+  crates.io only.
+- Run `zizmor .github/workflows` (and `actionlint`) after editing a workflow.
+- GitHub Copilot code review follows `.github/copilot-instructions.md` (it reads only the
+  first 4,000 characters). When a rule here changes, update that file too.
 
 ## License
 

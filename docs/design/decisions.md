@@ -20,6 +20,7 @@ still has to decide.
 | Line endings | Stored as committed, never converted | Conversion, if any, belongs to checkout. |
 | Refs | Only `main` and release branches are expected to be refs | Global mutable state is the scaling problem the design avoids. |
 | Diagrams | D2 for architecture (rendered SVG checked in CI), Mermaid for sequence diagrams | Text sources diff well and are compact context for agents (the draw.io XML of the same diagram was about five times larger and mostly coordinates). D2 renders deterministically from a single binary; Mermaid renders natively on GitHub. |
+| Supply chain | Actions pinned to commit SHAs, 14-day cooldown on new versions, least-privilege workflow tokens, Codecov via OIDC, CodeQL, zizmor, OpenSSF Scorecard, cargo-deny, private vulnerability reporting | roub hosts other people's source code; a compromised build or CI step would compromise every repository it serves. |
 
 ## Open: decide before the MVP
 
@@ -50,3 +51,16 @@ These shape the on-disk and in-database formats, so changing them later needs a 
   post-merge tests, automated bisect and revert.
 - Code search beyond path search.
 - Export back to git, or a read-only git facade.
+- **Verifiable ref log (transparency log), after the MVP.** A Merkle log of every ref move
+  (`repo, ref, version, old, new, changeset, principal, time`) in the C2SP `tlog-checkpoint`,
+  `tlog-cosignature` and `tlog-tiles` formats, as in Certificate Transparency and the Go checksum
+  database. roubd verifies an inclusion proof for every `ResolveRef` answer and consistency with
+  the last checkpoint it saw, so a compromised server cannot rewind `main` or show different
+  clients different histories; optional external witnesses cosign checkpoints. A batching
+  sequencer assigns log positions, so the ref compare-and-swap never waits on the log. The log
+  holds hashes and metadata only, never file contents or commit messages, so redaction does not
+  break it. Not a blockchain: roub has one authoritative operator, and consensus on every ref
+  move would undo lock-free commits.
+  **Constraint for the MVP:** `ref_log` rows are immutable and a ref's version never decreases or
+  restarts, including after the ref is deleted, so the log can be built from `ref_log` later
+  without a migration.

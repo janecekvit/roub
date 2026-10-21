@@ -1,5 +1,11 @@
 # roub
 
+[![CI](https://github.com/janecekvit/roub/actions/workflows/ci.yml/badge.svg)](https://github.com/janecekvit/roub/actions/workflows/ci.yml)
+[![Security](https://github.com/janecekvit/roub/actions/workflows/security.yml/badge.svg)](https://github.com/janecekvit/roub/actions/workflows/security.yml)
+[![codecov](https://codecov.io/gh/janecekvit/roub/graph/badge.svg)](https://codecov.io/gh/janecekvit/roub)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/janecekvit/roub/badge)](https://scorecard.dev/viewer/?uri=github.com/janecekvit/roub)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 Server-centric version control for agent-scale monorepos.
 
 *Roub* is Czech for *scion*: the shoot grafted onto a rootstock. roub follows the design Anthropic
@@ -69,6 +75,10 @@ Container image on Debian, and the local development stack (PostgreSQL, Azurite)
 docker build -t roub-server .
 docker compose up
 ```
+
+## Security
+
+Report vulnerabilities privately, as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
