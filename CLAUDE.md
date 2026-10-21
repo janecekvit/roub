@@ -81,6 +81,9 @@ updating `docs/design/decisions.md`.
 - Tests for pure logic live next to the code in `#[cfg(test)]` modules.
 - The repository is public: never put links to Claude sessions (`claude.ai/code/session_…`) or
   other private URLs in commits, pull request descriptions, comments or files.
+- Pull requests are squash-merged with the title and description as the commit message, so write
+  the description as that message: what changes and why, plus how it was tested. Instructions
+  for the reviewer or for repository settings go in a PR comment, not the description.
 
 ## Diagrams
 
