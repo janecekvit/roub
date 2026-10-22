@@ -11,8 +11,10 @@ still has to decide.
 |---|---|---|
 | Language | Rust, one codebase for every tier | Small static binaries for containers, no GC in the cache tier, native FUSE (Linux) and ProjFS (Windows), and the compiler rejects whole classes of bugs before review. |
 | Platforms | Linux (Debian) and Windows for every component; Azure and on-prem | Same binaries everywhere: Debian containers or `.deb` with systemd, a Windows service, Azure Container Apps (Linux only) or AKS. |
-| Metadata store | PostgreSQL on-prem and in Azure | One code path. Ref moves are `UPDATE … WHERE` on one row; the changeset WAL takes its order from a sequence. |
-| Blob store | `object_store` crate behind a roub trait | Local filesystem, S3-compatible stores and Azure Blob Storage from one API, Azurite for local development. |
+| Metadata store | PostgreSQL on-prem and in Azure | One code path. Ref moves are a compare-and-swap `UPDATE … WHERE` on one row. |
+| Blob store | A local or mounted directory now (`blob.rs`: atomic writes, content verified on every read); Azure Blob Storage and S3 later, probably through the `object_store` crate | The directory needs no dependency; `object_store` with only its filesystem backend would add about 85 crates. Azurite stays in `compose.yaml` for the Azure backend. |
+| Database schema | `crates/roub-server/migrations/`, applied at start-up under an advisory lock. Every table is keyed by repository. Trees and changesets live in PostgreSQL (`bytea`), blob contents in the blob store with an index row (`blobs`) written only after the content is durable. Triggers reject `UPDATE`, `DELETE` and `TRUNCATE` on objects and on `ref_log`, the deletion of a ref row, and any ref update that does not raise the version by exactly one | Trees and changesets are small and must be written in the same transaction; blobs can be large. The triggers make the immutability and ref-version rules hold even for a bug or a stray SQL statement, not only for the API. |
+| Database access | `tokio-postgres` with `deadpool-postgres` | Small, asynchronous, no compile-time database needed; the queries are few and covered by tests against a real PostgreSQL. |
 | Wire contract | gRPC, `crates/roub-proto/proto/roub/v1/roub.proto` | Same RPCs at every tier, streaming for object fetch and blob upload. |
 | Object ids | BLAKE3-256 of the canonical, uncompressed encoding, with a key-derivation context per object kind | Fast, and ids stay stable if compression changes. A blob and a tree with the same bytes never share an id. |
 | Paths | `/`-separated, relative, NFC; no Windows-forbidden characters, reserved device names, trailing dots or spaces; components up to 255 bytes; `.roub` reserved | Every path in a repository checks out on Linux and Windows (`roub-core::path`). |
@@ -37,7 +39,10 @@ These shape the on-disk and in-database formats, so changing them later needs a 
 
 - **Large files:** chunking, deduplication and the compression codec (zstd level, dictionaries).
   The blob id is already fixed as the hash of the whole content.
-- **Database schema** for the WAL, refs, derived data, ACLs and the git id map.
+- **Database schema, remaining parts:** WAL order (a sequence is not commit order), derived
+  data beyond the root tree, ACLs and the git id map.
+- **TLS to PostgreSQL**, required by Azure Database for PostgreSQL. Needs a TLS crate
+  (`rustls` brings the ISC licence into `deny.toml`) and certificate configuration.
 - **Derived data framework:** how a type is versioned, backfilled and invalidated when its
   definition changes.
 - **Authorization through caches.** Per-directory ACLs are checked at roub-server. A cache that

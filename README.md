@@ -12,8 +12,9 @@ Server-centric version control for agent-scale monorepos.
 described in [Redesigning source control at Anthropic](https://www.anthropic.com/research/redesigning-source-control).
 It is an independent implementation, not affiliated with or endorsed by Anthropic.
 
-> **Status:** early. The object format, tree derivation and every server RPC work against an
-> in-memory store, with no authentication yet; storage, caches, the daemon and the CLI are next.
+> **Status:** early. The object format, tree derivation and every server RPC work, on PostgreSQL
+> and a local blob directory, with no authentication or TLS yet; caches, the daemon and the CLI
+> are next.
 > See [design decisions](docs/design/decisions.md).
 
 ## Why
@@ -64,14 +65,22 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Run the server. It keeps everything in memory and has no authentication yet, so listen only on
-a local address:
+Run the server. It has no authentication yet, so listen only on a local address. Without a
+database it keeps everything in memory:
 
 ```sh
 cargo run -p roub-server -- --listen 127.0.0.1:7470 --repository monorepo
 ```
 
-Container image on Debian, and the local development stack (PostgreSQL, Azurite):
+With PostgreSQL (the schema is created on first start) and blobs in a directory:
+
+```sh
+export ROUB_DATABASE_URL=postgres://roub:roub@localhost:5432/roub
+export ROUB_BLOB_DIR=/var/lib/roub/blobs
+cargo run -p roub-server -- --listen 127.0.0.1:7470 --repository monorepo
+```
+
+Container image on Debian, and the local development stack (roub-server on PostgreSQL):
 
 ```sh
 docker build -t roub-server .

@@ -10,8 +10,8 @@ only what they need; the server creates commits, merges, rebases and answers his
 One Rust codebase runs on Linux (Debian), Windows and Azure.
 
 Status: early. `roub-core` implements the object format and tree derivation; roub-server serves
-every RPC from an in-memory store, without authentication. PostgreSQL and the blob store, the
-cache, the daemon and the CLI are still to come. `docs/design/decisions.md` lists what is decided
+every RPC from PostgreSQL and a local blob directory (or from memory), without authentication or
+TLS yet. Cloud blob stores, the cache, the daemon and the CLI are still to come. `docs/design/decisions.md` lists what is decided
 and what is still open.
 
 ## Commands
@@ -26,14 +26,17 @@ cargo deny check                        # advisories, licences, sources
 scripts/render-diagrams.sh              # format and render docs/**/*.d2 to SVG
 scripts/render-diagrams.sh --check      # what CI runs: formatted, valid, SVG up to date
 cd fuzz && cargo +nightly-2026-10-01 fuzz run decode_changeset   # needs cargo-fuzz
-cargo test -p roub-server --test rpc    # end-to-end gRPC tests against the in-memory store
-cargo run -p roub-server -- --listen 127.0.0.1:7470 --repository monorepo
+cargo test -p roub-server --test rpc    # end-to-end gRPC tests; PostgreSQL ones need the variable below
+ROUB_TEST_DATABASE_URL=postgres://roub:roub@localhost/roub_test cargo test -p roub-server
+cargo run -p roub-server -- --listen 127.0.0.1:7470 --repository monorepo   # in memory
+ROUB_DATABASE_URL=postgres://… ROUB_BLOB_DIR=/var/lib/roub/blobs cargo run -p roub-server -- --repository monorepo
 docker build -t roub-server .           # Debian image
-docker compose up                       # PostgreSQL + Azurite + roub-server
+docker compose up                       # roub-server on PostgreSQL (+ Azurite, not used yet)
 ```
 
 CI (`.github/workflows/ci.yml`) runs fmt, clippy and tests on Ubuntu and Windows, coverage
-(cargo-llvm-cov, uploaded to Codecov), cargo-deny (workspace and `fuzz/`), short fuzz runs of the
+(cargo-llvm-cov, uploaded to Codecov; the only job with a PostgreSQL service, so the PostgreSQL
+tests run there), cargo-deny (workspace and `fuzz/`), short fuzz runs of the
 decoders on a pinned nightly, a Docker build and the diagram check.
 `security.yml` runs CodeQL (Rust and the workflows) and zizmor; `scorecard.yml` runs OpenSSF
 Scorecard. The toolchain is pinned in `rust-toolchain.toml`; keep the CI workflow and the
@@ -48,7 +51,7 @@ Dockerfile on the same version.
 | `roub-cli` | `roub` | Short-lived client; talks only to `roubd`. |
 | `roubd` | `roubd` | Node daemon: one object store per node, file watcher, dirty-path set. |
 | `roub-cache` | `roub-cache` | Regional cache: trees and blobs from RAM, upstream only on a miss. |
-| `roub-server` | `roub-server` | Authoritative, stateless API fleet over PostgreSQL and the blob store. The RPC handlers (`service.rs`) validate everything and run on any `Store`; `MemoryStore` serves tests. |
+| `roub-server` | `roub-server` | Authoritative, stateless API fleet over PostgreSQL and the blob store. The RPC handlers (`service.rs`) validate everything and run on any `Store`: `PostgresStore` (schema in `migrations/`, blobs in `blob.rs`) or `MemoryStore`. |
 
 Shared versions, lints and package metadata live in the root `Cargo.toml`
 (`[workspace.package]`, `[workspace.dependencies]`, `[workspace.lints]`). Add dependencies there
@@ -93,6 +96,10 @@ updating `docs/design/decisions.md`.
   with one implementation per OS, selected with `cfg`.
 - Tests for pure logic live next to the code in `#[cfg(test)]` modules; property tests that
   cross modules live in the crate's `tests/` directory.
+- Schema changes are new files in `crates/roub-server/migrations/`, never edits to an applied one.
+  Objects, refs and the ref log are protected by triggers; keep it that way.
+- End-to-end tests in `crates/roub-server/tests/rpc.rs` are listed in `store_tests!`, which runs
+  each one against every `Store`.
 - The repository is public: never put links to Claude sessions (`claude.ai/code/session_…`) or
   other private URLs in commits, pull request descriptions, comments or files.
 - Pull requests are squash-merged with the title and description as the commit message, so write

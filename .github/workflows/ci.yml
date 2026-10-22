@@ -45,10 +45,31 @@ jobs:
         run: cargo test --workspace --locked
 
   coverage:
+    # Also runs the PostgreSQL tests, which the other test jobs skip.
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write # Codecov upload via GitHub OIDC, no stored token
+    services:
+      postgres:
+        # Pinned by digest like the actions; 17.10 was published on 2026-08-05.
+        image: postgres:17.10@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317
+        env:
+          # A throwaway database that exists only for this job.
+          POSTGRES_USER: roub
+          POSTGRES_PASSWORD: roub
+          POSTGRES_DB: roub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U roub -d roub_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      ROUB_TEST_DATABASE_URL: postgres://roub:roub@localhost:5432/roub_test
+      # Fail instead of skipping if the database is not reachable.
+      ROUB_REQUIRE_POSTGRES: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
