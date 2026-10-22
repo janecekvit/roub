@@ -26,6 +26,10 @@ still has to decide.
 | Changeset contents | Ordered parents (at most 16), author, optional committer, message, `Put`/`Delete` per path relative to the first parent, optional `copy_from` (parent, path) for copies and renames, extensions | `Put`/`Delete` is what every implementation converged on; `copy_from` keeps rename history exact instead of guessing it later. A merge's tree is the first parent's tree plus its changes. |
 | Blob ids | BLAKE3 of the whole file content; chunking, when it comes, is a storage format below the id | Large-file chunking can be added without changing any id. |
 | Symlinks and executable bit | Always stored in trees as their own modes | The stored tree is the same on every platform; only checkout differs. |
+| Who computes ids | The server. `PutBlobs` hashes each blob and rejects a wrong id; `CreateChangeset` takes the changeset's fields, builds the canonical encoding and returns the id | A client can never store content under an id that does not match it. The same request always yields the same id, so `CreateChangeset` is idempotent and safe to retry. |
+| Commit preconditions | Every parent and every blob must already be stored, each put's size must match its blob, and a copy source must be a file in the named parent | A stored changeset always derives to complete trees, and its history metadata points at real files. |
+| Ref versions | Every create, move or delete of a ref increments its version; a deleted ref keeps its row, so the version never restarts. Every move is appended to an immutable ref log | Clients can detect any change between two reads (no ABA), and the verifiable ref log below can be built from the existing rows. |
+| Repository and ref names | `/`-separated segments of ASCII letters, digits, `-`, `_` and `.`, no segment starting with a dot, at most 255 bytes (`roub-core::name`) | Safe without escaping in URLs, logs, metrics labels and database columns. |
 
 ## Open: decide before the MVP
 

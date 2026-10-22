@@ -9,8 +9,10 @@ implementation of the design Anthropic described for Scion. Clients are always o
 only what they need; the server creates commits, merges, rebases and answers history queries.
 One Rust codebase runs on Linux (Debian), Windows and Azure.
 
-Status: skeleton. The crates build, the wire contract is defined, every RPC answers
-`UNIMPLEMENTED`. `docs/design/decisions.md` lists what is decided and what is still open.
+Status: early. `roub-core` implements the object format and tree derivation; roub-server serves
+every RPC from an in-memory store, without authentication. PostgreSQL and the blob store, the
+cache, the daemon and the CLI are still to come. `docs/design/decisions.md` lists what is decided
+and what is still open.
 
 ## Commands
 
@@ -24,7 +26,8 @@ cargo deny check                        # advisories, licences, sources
 scripts/render-diagrams.sh              # format and render docs/**/*.d2 to SVG
 scripts/render-diagrams.sh --check      # what CI runs: formatted, valid, SVG up to date
 cd fuzz && cargo +nightly-2026-10-01 fuzz run decode_changeset   # needs cargo-fuzz
-cargo run -p roub-server -- --listen 127.0.0.1:7470
+cargo test -p roub-server --test rpc    # end-to-end gRPC tests against the in-memory store
+cargo run -p roub-server -- --listen 127.0.0.1:7470 --repository monorepo
 docker build -t roub-server .           # Debian image
 docker compose up                       # PostgreSQL + Azurite + roub-server
 ```
@@ -40,12 +43,12 @@ Dockerfile on the same version.
 
 | Crate | Binary | Role |
 |---|---|---|
-| `roub-core` | | Pure logic, no I/O: object ids, canonical encoding of trees and changesets, tree derivation, path rules. Shared by every tier. |
+| `roub-core` | | Pure logic, no I/O: object ids, canonical encoding of trees and changesets, tree derivation, path, repository and ref name rules. Shared by every tier. |
 | `roub-proto` | | gRPC contract in `proto/roub/v1/roub.proto`, compiled with a vendored `protoc`. |
 | `roub-cli` | `roub` | Short-lived client; talks only to `roubd`. |
 | `roubd` | `roubd` | Node daemon: one object store per node, file watcher, dirty-path set. |
 | `roub-cache` | `roub-cache` | Regional cache: trees and blobs from RAM, upstream only on a miss. |
-| `roub-server` | `roub-server` | Authoritative, stateless API fleet over PostgreSQL and the blob store. |
+| `roub-server` | `roub-server` | Authoritative, stateless API fleet over PostgreSQL and the blob store. The RPC handlers (`service.rs`) validate everything and run on any `Store`; `MemoryStore` serves tests. |
 
 Shared versions, lints and package metadata live in the root `Cargo.toml`
 (`[workspace.package]`, `[workspace.dependencies]`, `[workspace.lints]`). Add dependencies there
@@ -66,9 +69,13 @@ updating `docs/design/decisions.md`.
 - **Trees are derived.** A changeset lists only `Put`/`Delete` changes relative to its first
   parent and never names a root tree; `roub-core::derive` computes the trees.
 - **Refs are the only mutable state and are never cached.** `ResolveRef` and
-  `CompareAndSwapRef` always reach roub-server and PostgreSQL.
+  `CompareAndSwapRef` always reach roub-server and PostgreSQL. A ref's version only grows, also
+  across delete and re-create, and every move is appended to an immutable ref log.
 - **Commits take no lock.** `CreateChangeset` appends to the WAL; moving a ref is a separate
   compare-and-swap on one row.
+- **The server computes every id.** Clients send blob contents and changeset fields; the server
+  hashes them and never stores an object under an id it did not compute. `CreateChangeset` is
+  idempotent, so a retry is safe.
 - **Cost follows the change.** Nothing on the commit path may scan the whole repository.
 - **Paths are validated at commit time** with `roub-core::path::RepoPath` and
   `find_case_collisions`, so every checkout works on Linux and Windows.

@@ -20,6 +20,8 @@ services:
 
   roub-server:
     build: .
+    environment:
+      ROUB_REPOSITORIES: monorepo
     ports:
       - "7470:7470"
     depends_on:

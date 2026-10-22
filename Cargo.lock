@@ -985,7 +985,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "roub-core",
  "roub-proto",
+ "thiserror",
  "tokio",
  "tokio-stream",
  "tonic",

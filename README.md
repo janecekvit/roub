@@ -12,8 +12,9 @@ Server-centric version control for agent-scale monorepos.
 described in [Redesigning source control at Anthropic](https://www.anthropic.com/research/redesigning-source-control).
 It is an independent implementation, not affiliated with or endorsed by Anthropic.
 
-> **Status:** early skeleton. The crates build and the wire contract is defined; no RPC is
-> implemented yet. See [design decisions](docs/design/decisions.md) for what comes next.
+> **Status:** early. The object format, tree derivation and every server RPC work against an
+> in-memory store, with no authentication yet; storage, caches, the daemon and the CLI are next.
+> See [design decisions](docs/design/decisions.md).
 
 ## Why
 
@@ -63,10 +64,11 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Run the server (every RPC currently answers `UNIMPLEMENTED`):
+Run the server. It keeps everything in memory and has no authentication yet, so listen only on
+a local address:
 
 ```sh
-cargo run -p roub-server -- --listen 127.0.0.1:7470
+cargo run -p roub-server -- --listen 127.0.0.1:7470 --repository monorepo
 ```
 
 Container image on Debian, and the local development stack (PostgreSQL, Azurite):
