@@ -229,6 +229,30 @@ fn join(prefix: &str, name: &str) -> String {
     }
 }
 
+/// Returns the entry at `path` under a root tree, or `None` if nothing is there. Reads one tree
+/// per path component, so the cost follows the path's depth, not the repository's size.
+pub fn lookup<S: TreeSource>(
+    source: &S,
+    root: &ObjectId,
+    path: &RepoPath,
+) -> Result<Option<TreeEntry>, DeriveError> {
+    let mut tree = load(source, root)?;
+    let mut components = path.components().peekable();
+    while let Some(name) = components.next() {
+        let Some(entry) = tree.get(name) else {
+            return Ok(None);
+        };
+        if components.peek().is_none() {
+            return Ok(Some(entry.clone()));
+        }
+        if entry.mode != EntryMode::Tree {
+            return Ok(None);
+        }
+        tree = load(source, &entry.id)?;
+    }
+    Ok(None)
+}
+
 /// Lists every file under a root tree, for tests and diagnostics.
 pub fn list_files<S: TreeSource>(
     source: &S,
@@ -452,5 +476,20 @@ mod tests {
             .commit(None, vec![put("a", b"same"), put("b", b"same")])
             .unwrap();
         assert_eq!(with_copy, plain);
+    }
+
+    #[test]
+    fn looks_up_files_and_directories() {
+        let mut store = Store::default();
+        let (root, _) = store
+            .commit(None, vec![put("a/b/c.txt", b"1"), put("d", b"22")])
+            .unwrap();
+        let find = |path: &str| lookup(&store, &root, &RepoPath::new(path).unwrap()).unwrap();
+        assert_eq!(find("a/b/c.txt").map(|e| e.size), Some(1));
+        assert_eq!(find("d").map(|e| e.mode), Some(EntryMode::Regular));
+        assert_eq!(find("a/b").map(|e| e.mode), Some(EntryMode::Tree));
+        assert_eq!(find("a/x"), None);
+        // A path through a file finds nothing.
+        assert_eq!(find("d/e"), None);
     }
 }

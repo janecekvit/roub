@@ -8,6 +8,8 @@ and security first, style last. `CLAUDE.md` holds the full rules; flag any chang
 
 - **Object format:** a change alters the canonical encoding or a BLAKE3 derive-key context string
   in `roub-core::object` without a new format version. Ids are part of the on-disk format.
+- **Ids:** an object is stored under an id the server did not compute from its content, or a
+  client-supplied id is trusted anywhere on the write path.
 - **Decoders** accept more than one encoding of the same value: trailing bytes, non-minimal
   integers, unsorted or duplicate entries, unknown critical fields. Every decoder must be strict.
 - **Untrusted input** (wire, stored objects, git import) can panic, allocate without a bound, or

@@ -36,8 +36,9 @@ message Object {
 }
 
 service ObjectService {
-  // Streams the requested objects. The caller names only what it wants, never what it
-  // already has; missing objects end the stream with NOT_FOUND.
+  // Streams the requested objects in the order asked. The caller names only what it wants,
+  // never what it already has; a missing object ends the stream with NOT_FOUND. At most 1024
+  // ids per request.
   rpc GetObjects(GetObjectsRequest) returns (stream Object);
 }
 
@@ -48,16 +49,21 @@ message GetObjectsRequest {
 
 service RepositoryService {
   // Resolves a ref to the changeset it points at. Always answered from the metadata store.
+  // NOT_FOUND if the ref does not exist.
   rpc ResolveRef(ResolveRefRequest) returns (ResolveRefResponse);
 
   // Stores blobs the server does not have yet (put-if-absent). Blobs already present are
-  // acknowledged without being written again.
+  // acknowledged without being written again. The server recomputes every id from the
+  // content and rejects a mismatch, so a client cannot store content under a wrong id.
   rpc PutBlobs(stream PutBlobsRequest) returns (PutBlobsResponse);
 
-  // Appends a changeset to the write-ahead log. Takes no lock and moves no ref.
+  // Appends a changeset to the write-ahead log and derives its trees. Takes no lock and moves
+  // no ref. Every parent and every blob must already be stored. Idempotent: the same request
+  // yields the same changeset id, so a retry after a lost response is safe.
   rpc CreateChangeset(CreateChangesetRequest) returns (CreateChangesetResponse);
 
-  // Moves a ref if it still points at `expected`: a compare-and-swap on one row.
+  // Creates, moves or deletes a ref if it still points at `expected`: a compare-and-swap on
+  // one row.
   rpc CompareAndSwapRef(CompareAndSwapRefRequest) returns (CompareAndSwapRefResponse);
 }
 
@@ -68,8 +74,15 @@ message ResolveRefRequest {
 
 message ResolveRefResponse {
   ObjectId changeset = 1;
+  // Increases by one with every move of the ref and never restarts, even after the ref is
+  // deleted and created again.
+  uint64 version = 2;
+  // Root tree of `changeset`, so a checkout needs no extra round trip.
+  ObjectId root_tree = 3;
 }
 
+// Every message of one stream names the same repository. `blob.kind` is OBJECT_KIND_BLOB and
+// `blob.compression` is COMPRESSION_NONE for now.
 message PutBlobsRequest {
   string repository = 1;
   Object blob = 2;
@@ -87,9 +100,21 @@ enum FileMode {
   FILE_MODE_SYMLINK = 3;
 }
 
+// The file a path holds after the change. For a symlink, `blob` holds the target.
 message FileContent {
   ObjectId blob = 1;
   FileMode mode = 2;
+  // Size of the blob in bytes; must match the stored blob.
+  uint64 size = 3;
+  // Set for a copy, or for a rename together with a delete of the source.
+  CopyFrom copy_from = 4;
+}
+
+// Where a copied or renamed file came from: a file in one of the parents.
+message CopyFrom {
+  // Index into `CreateChangesetRequest.parents`.
+  uint32 parent = 1;
+  string path = 2;
 }
 
 message Deleted {}
@@ -98,31 +123,56 @@ message Deleted {}
 message FileChange {
   string path = 1;
   oneof change {
-    FileContent upsert = 2;
+    FileContent put = 2;
     Deleted delete = 3;
   }
 }
 
+message Signature {
+  string name = 1;
+  string email = 2;
+  // Seconds since the Unix epoch, UTC.
+  sint64 time = 3;
+  // Minutes east of UTC, at most 1440 either way.
+  sint64 tz_offset_minutes = 4;
+}
+
+// The fields of a changeset (docs/design/object-format.md). The server builds the canonical
+// changeset from them, so it computes the id rather than trusting one.
 message CreateChangesetRequest {
   string repository = 1;
-  ObjectId parent = 2;
+  // Was a single `parent`; merges need several.
+  reserved 2;
+  reserved "parent";
+  // One change per path, in any order; the server sorts them.
   repeated FileChange changes = 3;
   string message = 4;
+  // In order; the first is the base of `changes`. Empty starts a new history.
+  repeated ObjectId parents = 5;
+  Signature author = 6;
+  // Absent: the committer is the author.
+  Signature committer = 7;
 }
 
 message CreateChangesetResponse {
   ObjectId changeset = 1;
+  ObjectId root_tree = 2;
 }
 
 message CompareAndSwapRefRequest {
   string repository = 1;
   string ref_name = 2;
+  // Absent: the ref must not exist yet (create).
   ObjectId expected = 3;
+  // Absent: delete the ref. Otherwise a changeset already stored in the repository.
   ObjectId desired = 4;
 }
 
 message CompareAndSwapRefResponse {
   bool swapped = 1;
-  // Where the ref points now: `desired` on success, the winner's changeset otherwise.
+  // Where the ref points now: `desired` on success, the winner's changeset otherwise. Absent if
+  // the ref does not exist.
   ObjectId current = 2;
+  // The ref's version now (see ResolveRefResponse.version); 0 if it never existed.
+  uint64 version = 3;
 }

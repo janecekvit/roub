@@ -32,7 +32,7 @@ sequenceDiagram
     D->>C: ResolveRef(main)
     C->>S: ResolveRef (passes through, never cached)
     S->>M: read the ref row
-    S-->>D: changeset id
+    S-->>D: changeset id, version, root tree id
     loop root tree down, only directories in the sparse profile
         D->>D: which trees and blobs are missing locally?
         D->>C: GetObjects(missing ids)
@@ -65,18 +65,19 @@ sequenceDiagram
     CLI->>D: commit -m "…"
     D->>C: PutBlobs(new blobs)
     C->>S: PutBlobs (passes through)
+    S->>S: hash every blob, reject a wrong id
     S->>B: put-if-absent per blob
     S-->>D: stored / already present
-    D->>C: CreateChangeset(parent, changed paths, blob ids)
+    D->>C: CreateChangeset(parents, author, message, changed paths with blob ids)
     C->>S: CreateChangeset (passes through)
-    S->>S: validate paths (case collisions, Windows names)
-    S->>M: append the changeset to the WAL, no lock
-    S-->>D: changeset id
+    S->>S: validate paths, check parents and blobs, derive trees (case collisions, Windows names)
+    S->>M: append the changeset and its trees to the WAL, no lock
+    S-->>D: changeset id, root tree id
     D->>C: CompareAndSwapRef(main, expected, desired)
     C->>S: CompareAndSwapRef (passes through)
     alt main still points at expected
-        S->>M: UPDATE refs … WHERE changeset = expected
-        S-->>D: swapped
+        S->>M: UPDATE refs … WHERE changeset = expected, append to the ref log
+        S-->>D: swapped, new version
     else another change landed first
         S-->>D: not swapped, current main
         D->>S: rebase onto current main (server-side), then retry the swap
