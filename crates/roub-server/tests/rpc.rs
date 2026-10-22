@@ -1,48 +1,15 @@
-//! End-to-end tests: a real gRPC server on a local port, an in-memory store, and the generated
-//! clients, as roubd and roub-cache will use them.
+//! End-to-end tests: a real gRPC server on a local port and the generated clients, as roubd and
+//! roub-cache will use them. Every test runs against the in-memory store and, when
+//! `ROUB_TEST_DATABASE_URL` is set, against PostgreSQL.
 
-use std::sync::Arc;
+#[macro_use]
+mod common;
 
-use roub_core::{Changeset, ObjectId, ObjectKind, RepositoryName, Tree};
+use roub_core::{Changeset, ObjectId, ObjectKind, Tree};
 use roub_proto::v1 as proto;
-use roub_proto::v1::object_service_client::ObjectServiceClient;
-use roub_proto::v1::object_service_server::ObjectServiceServer;
-use roub_proto::v1::repository_service_client::RepositoryServiceClient;
-use roub_proto::v1::repository_service_server::RepositoryServiceServer;
-use roub_server::{MemoryStore, RoubService};
-use tokio::net::TcpListener;
-use tokio_stream::wrappers::TcpListenerStream;
 use tonic::Code;
-use tonic::transport::Channel;
 
-const REPO: &str = "monorepo";
-
-struct Client {
-    objects: ObjectServiceClient<Channel>,
-    repos: RepositoryServiceClient<Channel>,
-}
-
-async fn start() -> Client {
-    let store = MemoryStore::new([RepositoryName::new(REPO).unwrap()]);
-    let service = RoubService::new(Arc::new(store));
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    tokio::spawn(
-        tonic::transport::Server::builder()
-            .add_service(ObjectServiceServer::new(service.clone()))
-            .add_service(RepositoryServiceServer::new(service))
-            .serve_with_incoming(TcpListenerStream::new(listener)),
-    );
-    let channel = Channel::from_shared(format!("http://{address}"))
-        .unwrap()
-        .connect()
-        .await
-        .unwrap();
-    Client {
-        objects: ObjectServiceClient::new(channel.clone()),
-        repos: RepositoryServiceClient::new(channel),
-    }
-}
+use common::{Client, REPO};
 
 fn id(id: ObjectId) -> proto::ObjectId {
     proto::ObjectId {
@@ -172,9 +139,7 @@ impl Client {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn commit_matches_the_golden_vectors() {
-    let mut client = start().await;
+async fn commit_matches_the_golden_vectors(mut client: Client) {
     let stored = client.put_blobs(vec![blob(b"hello")]).await;
     assert_eq!((stored.stored, stored.already_present), (1, 0));
 
@@ -218,9 +183,7 @@ async fn commit_matches_the_golden_vectors() {
     assert_eq!(objects[2].content, b"hello");
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn second_commit_derives_from_its_parent() {
-    let mut client = start().await;
+async fn second_commit_derives_from_its_parent(mut client: Client) {
     client
         .put_blobs(vec![blob(b"1"), blob(b"22"), blob(b"333")])
         .await;
@@ -259,9 +222,7 @@ async fn second_commit_derives_from_its_parent() {
     assert_eq!(names, ["b.rs"]);
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn rejects_changesets_that_do_not_apply() {
-    let mut client = start().await;
+async fn rejects_changesets_that_do_not_apply(mut client: Client) {
     client.put_blobs(vec![blob(b"x")]).await;
     let (first, _) = client
         .create(changeset(&[], vec![put("a", b"x")]))
@@ -352,9 +313,7 @@ async fn rejects_changesets_that_do_not_apply() {
     assert_eq!(code(client.create(elsewhere).await), Code::NotFound);
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn put_blobs_verifies_ids() {
-    let mut client = start().await;
+async fn put_blobs_verifies_ids(mut client: Client) {
     let stored = client
         .put_blobs(vec![blob(b"a"), blob(b"a"), blob(b"b")])
         .await;
@@ -393,9 +352,7 @@ async fn put_blobs_verifies_ids() {
     assert_eq!(error.code(), Code::InvalidArgument);
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn get_objects_stops_at_the_first_missing_object() {
-    let mut client = start().await;
+async fn get_objects_stops_at_the_first_missing_object(mut client: Client) {
     client.put_blobs(vec![blob(b"a")]).await;
     let request = proto::GetObjectsRequest {
         repository: REPO.into(),
@@ -422,9 +379,7 @@ async fn get_objects_stops_at_the_first_missing_object() {
     assert_eq!(error.code(), Code::InvalidArgument);
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn refs_move_by_compare_and_swap() {
-    let mut client = start().await;
+async fn refs_move_by_compare_and_swap(mut client: Client) {
     client.put_blobs(vec![blob(b"1"), blob(b"2")]).await;
     let (first, first_root) = client
         .create(changeset(&[], vec![put("f", b"1")]))
@@ -491,3 +446,32 @@ async fn refs_move_by_compare_and_swap() {
         .unwrap_err();
     assert_eq!(error.code(), Code::InvalidArgument);
 }
+
+async fn concurrent_swaps_have_one_winner(mut client: Client) {
+    client.put_blobs(vec![blob(b"x")]).await;
+    let (first, _) = client
+        .create(changeset(&[], vec![put("f", b"x")]))
+        .await
+        .unwrap();
+    let swaps = (0..8).map(|_| {
+        let mut client = client.clone();
+        tokio::spawn(async move { client.swap("main", None, Some(first)).await.unwrap() })
+    });
+    let mut winners = 0;
+    for swap in swaps {
+        let outcome = swap.await.unwrap();
+        winners += usize::from(outcome.swapped);
+        assert_eq!(outcome.version, 1);
+    }
+    assert_eq!(winners, 1);
+}
+
+store_tests!(
+    commit_matches_the_golden_vectors,
+    second_commit_derives_from_its_parent,
+    rejects_changesets_that_do_not_apply,
+    put_blobs_verifies_ids,
+    get_objects_stops_at_the_first_missing_object,
+    refs_move_by_compare_and_swap,
+    concurrent_swaps_have_one_winner,
+);

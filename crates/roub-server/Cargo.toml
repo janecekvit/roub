@@ -11,10 +11,12 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+deadpool-postgres.workspace = true
 roub-core.workspace = true
 roub-proto.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-postgres.workspace = true
 tokio-stream.workspace = true
 tonic.workspace = true
 tracing.workspace = true
