@@ -23,13 +23,15 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo deny check                        # advisories, licences, sources
 scripts/render-diagrams.sh              # format and render docs/**/*.d2 to SVG
 scripts/render-diagrams.sh --check      # what CI runs: formatted, valid, SVG up to date
+cd fuzz && cargo +nightly-2026-10-01 fuzz run decode_changeset   # needs cargo-fuzz
 cargo run -p roub-server -- --listen 127.0.0.1:7470
 docker build -t roub-server .           # Debian image
 docker compose up                       # PostgreSQL + Azurite + roub-server
 ```
 
 CI (`.github/workflows/ci.yml`) runs fmt, clippy and tests on Ubuntu and Windows, coverage
-(cargo-llvm-cov, uploaded to Codecov), cargo-deny, a Docker build and the diagram check.
+(cargo-llvm-cov, uploaded to Codecov), cargo-deny (workspace and `fuzz/`), short fuzz runs of the
+decoders on a pinned nightly, a Docker build and the diagram check.
 `security.yml` runs CodeQL (Rust and the workflows) and zizmor; `scorecard.yml` runs OpenSSF
 Scorecard. The toolchain is pinned in `rust-toolchain.toml`; keep the CI workflow and the
 Dockerfile on the same version.
@@ -38,7 +40,7 @@ Dockerfile on the same version.
 
 | Crate | Binary | Role |
 |---|---|---|
-| `roub-core` | | Pure logic, no I/O: object ids, path rules. Shared by every tier. |
+| `roub-core` | | Pure logic, no I/O: object ids, canonical encoding of trees and changesets, tree derivation, path rules. Shared by every tier. |
 | `roub-proto` | | gRPC contract in `proto/roub/v1/roub.proto`, compiled with a vendored `protoc`. |
 | `roub-cli` | `roub` | Short-lived client; talks only to `roubd`. |
 | `roubd` | `roubd` | Node daemon: one object store per node, file watcher, dirty-path set. |
@@ -58,7 +60,11 @@ updating `docs/design/decisions.md`.
   next one. `ObjectService` RPCs are identical at every tier so clients never know the topology.
 - **Objects are immutable and content-addressed.** Ids are BLAKE3-256 of the canonical,
   uncompressed encoding with a per-kind derive-key context (`roub-core::object`). The context
-  strings are part of the format: never edit them.
+  strings are part of the format: never edit them. `docs/design/object-format.md` specifies the
+  encoding; change it only with a new format version and context string, and update the spec,
+  the golden tests and the fuzz targets in the same change.
+- **Trees are derived.** A changeset lists only `Put`/`Delete` changes relative to its first
+  parent and never names a root tree; `roub-core::derive` computes the trees.
 - **Refs are the only mutable state and are never cached.** `ResolveRef` and
   `CompareAndSwapRef` always reach roub-server and PostgreSQL.
 - **Commits take no lock.** `CreateChangeset` appends to the WAL; moving a ref is a separate
@@ -78,7 +84,8 @@ updating `docs/design/decisions.md`.
   reuse numbers, and update every tier that serves the RPC.
 - Platform differences (virtual file system, watcher, local IPC, service host) go behind traits
   with one implementation per OS, selected with `cfg`.
-- Tests for pure logic live next to the code in `#[cfg(test)]` modules.
+- Tests for pure logic live next to the code in `#[cfg(test)]` modules; property tests that
+  cross modules live in the crate's `tests/` directory.
 - The repository is public: never put links to Claude sessions (`claude.ai/code/session_…`) or
   other private URLs in commits, pull request descriptions, comments or files.
 - Pull requests are squash-merged with the title and description as the commit message, so write

@@ -37,7 +37,7 @@ Sequence diagrams for a checkout and a commit are in [docs/architecture](docs/ar
 
 | Crate | Binary | Role |
 |---|---|---|
-| `roub-core` | | Object ids (BLAKE3) and cross-platform path rules |
+| `roub-core` | | Object ids (BLAKE3), canonical object encoding, tree derivation, cross-platform path rules |
 | `roub-proto` | | gRPC contract, generated with a vendored `protoc` |
 | `roub-cli` | `roub` | Command-line client |
 | `roubd` | `roubd` | Node daemon: shared object store, file watcher |

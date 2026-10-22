@@ -15,6 +15,11 @@ allow = [
     "Zlib",
 ]
 confidence-threshold = 0.8
+# libFuzzer is LLVM code under the permissive NCSA licence. It is linked only into the fuzz
+# targets in fuzz/, never into a roub binary, so the exception is scoped to that one crate.
+exceptions = [
+    { allow = ["NCSA"], crate = "libfuzzer-sys" },
+]
 
 [bans]
 multiple-versions = "warn"

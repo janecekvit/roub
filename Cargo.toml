@@ -19,6 +19,7 @@ anyhow = "1.0.104"
 blake3 = "1.8.7"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 prost = "0.14.4"
+proptest = { version = "1.11.0", default-features = false, features = ["std"] }
 protoc-bin-vendored = "3.3.0"
 thiserror = "2.0.21"
 tokio = { version = "1.50", features = ["macros", "rt-multi-thread", "signal"] }
@@ -28,7 +29,7 @@ tonic-prost = "0.14.6"
 tonic-prost-build = "0.14.6"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-unicode-normalization = "0.1.26"
+unicode-normalization = "0.1.25"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

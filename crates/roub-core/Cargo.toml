@@ -1,6 +1,6 @@
 [package]
 name = "roub-core"
-description = "Object model and path rules shared by every roub component."
+description = "Object model, canonical encoding and path rules shared by every roub component."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,6 +12,9 @@ repository.workspace = true
 blake3.workspace = true
 thiserror.workspace = true
 unicode-normalization.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
 
 [lints]
 workspace = true
