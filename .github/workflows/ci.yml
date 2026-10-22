@@ -62,7 +62,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U roub"
+          --health-cmd "pg_isready -U roub -d roub_test"
           --health-interval 2s
           --health-timeout 5s
           --health-retries 15
