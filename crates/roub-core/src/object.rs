@@ -98,8 +98,9 @@ impl FromStr for ObjectId {
             return Err(ParseObjectIdError::Hex);
         }
         let mut digest = [0u8; Self::LEN];
-        for (byte, pair) in digest.iter_mut().zip(hex.chunks_exact(2)) {
-            *byte = (hex_value(pair[0])? << 4) | hex_value(pair[1])?;
+        let (pairs, _) = hex.as_chunks::<2>();
+        for (byte, [high, low]) in digest.iter_mut().zip(pairs) {
+            *byte = (hex_value(*high)? << 4) | hex_value(*low)?;
         }
         Ok(Self(digest))
     }

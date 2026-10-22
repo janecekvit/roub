@@ -16,7 +16,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   # Keep in sync with rust-toolchain.toml.
-  RUST_TOOLCHAIN: 1.97.0
+  RUST_TOOLCHAIN: 1.99.0
 
 # Actions are pinned to full commit SHAs; the comment names the release. Dependabot updates both.
 jobs:
