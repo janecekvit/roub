@@ -352,7 +352,8 @@ fn check_signature(signature: &Signature) -> Result<(), DecodeError> {
             )));
         }
     }
-    if signature.tz_offset_minutes.abs() > MAX_TZ_OFFSET_MINUTES {
+    // A range check, not `abs()`: `i64::MIN.abs()` overflows (found by fuzzing).
+    if !(-MAX_TZ_OFFSET_MINUTES..=MAX_TZ_OFFSET_MINUTES).contains(&signature.tz_offset_minutes) {
         return Err(DecodeError::Invalid(format!(
             "timezone offset {} minutes is out of range",
             signature.tz_offset_minutes
@@ -520,6 +521,23 @@ mod tests {
         let mut f = fields(vec![], vec![]);
         f.author.tz_offset_minutes = 24 * 60 + 1;
         assert!(Changeset::new(f).is_err());
+    }
+
+    #[test]
+    fn rejects_extreme_timezone_offsets() {
+        for tz_offset_minutes in [i64::MIN, -(24 * 60) - 1, i64::MAX] {
+            let mut f = fields(vec![], vec![]);
+            f.author.tz_offset_minutes = tz_offset_minutes;
+            assert!(Changeset::new(f).is_err(), "{tz_offset_minutes}");
+        }
+        // Fuzzer input: an empty author with time -1 and offset i64::MIN.
+        let mut bytes = vec![0x01, 0x00, 0x00, 0x00, 0x01];
+        bytes.extend_from_slice(&[0xff; 9]);
+        bytes.extend_from_slice(&[0x01, 0x00, 0x00, 0x00, 0x00]);
+        assert!(matches!(
+            Changeset::decode(&bytes),
+            Err(DecodeError::Invalid(_))
+        ));
     }
 
     #[test]
