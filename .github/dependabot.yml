@@ -30,6 +30,10 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 14
+    groups:
+      # init, analyze and upload-sarif must run the same release: CodeQL refuses a mix.
+      codeql:
+        patterns: ["github/codeql-action*"]
 
   - package-ecosystem: "docker"
     directory: "/"
