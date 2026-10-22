@@ -1,6 +1,6 @@
 # roub-server on Debian. Build: docker build -t roub-server .
 # Keep the Rust version in sync with rust-toolchain.toml.
-FROM rust:1.98-slim-trixie AS build
+FROM rust:1.99-slim-trixie AS build
 WORKDIR /src
 COPY . .
 RUN cargo build --release --locked -p roub-server
