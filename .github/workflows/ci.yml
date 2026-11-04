@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
       - name: Install Rust
         run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt,clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
@@ -55,7 +55,7 @@ jobs:
           persist-credentials: false
       - name: Install Rust
         run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component llvm-tools-preview
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           tool: cargo-llvm-cov@0.9.1
@@ -92,7 +92,7 @@ jobs:
           persist-credentials: false
       - name: Install Rust
         run: rustup toolchain install "$FUZZ_TOOLCHAIN" --profile minimal
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: fuzz
       - uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
